@@ -1,0 +1,22 @@
+{
+  "name": "leadconnector-clone-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "API server for the LeadConnector-style CRM (Express + SQLite)",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node --no-warnings --env-file-if-exists=../.env src/index.js",
+    "dev": "node --no-warnings --env-file-if-exists=../.env --watch src/index.js",
+    "seed": "node --no-warnings --env-file-if-exists=../.env src/seed.js --reset"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
