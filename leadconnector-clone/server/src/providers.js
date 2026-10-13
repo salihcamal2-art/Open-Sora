@@ -11,7 +11,7 @@ const {
   EMAIL_FROM,
 } = process.env;
 
-async function twilioSend(to, body, from) {
+async function twilioSend(to, body, from, mediaUrls = []) {
   const url = `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
   const res = await fetch(url, {
     method: 'POST',
@@ -19,32 +19,37 @@ async function twilioSend(to, body, from) {
       Authorization: 'Basic ' + Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64'),
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ To: to, From: from, Body: body }),
+    body: (() => {
+      const form = new URLSearchParams({ To: to, From: from, Body: body || '' });
+      for (const u of mediaUrls) form.append('MediaUrl', u);
+      return form;
+    })(),
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json.message || `Twilio error ${res.status}`);
   return { providerId: json.sid, status: 'sent' };
 }
 
-export async function sendSms(to, body) {
+export async function sendSms(to, body, mediaUrls = []) {
   if (!to) throw new Error('Contact has no phone number');
   if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_FROM_NUMBER) {
-    return twilioSend(to, body, TWILIO_FROM_NUMBER);
+    return twilioSend(to, body, TWILIO_FROM_NUMBER, mediaUrls);
   }
   console.log(`[sms:simulated] -> ${to}: ${body}`);
   return { providerId: null, status: 'delivered', simulated: true };
 }
 
-export async function sendWhatsApp(to, body) {
+export async function sendWhatsApp(to, body, mediaUrls = []) {
   if (!to) throw new Error('Contact has no phone number');
   if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_WHATSAPP_FROM) {
-    return twilioSend(`whatsapp:${to}`, body, `whatsapp:${TWILIO_WHATSAPP_FROM}`);
+    return twilioSend(`whatsapp:${to}`, body, `whatsapp:${TWILIO_WHATSAPP_FROM}`, mediaUrls);
   }
   console.log(`[whatsapp:simulated] -> ${to}: ${body}`);
   return { providerId: null, status: 'delivered', simulated: true };
 }
 
-export async function sendEmail(to, subject, body) {
+/** attachments: [{ filename, type, content(base64) }] */
+export async function sendEmail(to, subject, body, attachments = []) {
   if (!to) throw new Error('Contact has no email address');
   if (SENDGRID_API_KEY && EMAIL_FROM) {
     const res = await fetch('https://api.sendgrid.com/v3/mail/send', {
@@ -54,7 +59,8 @@ export async function sendEmail(to, subject, body) {
         personalizations: [{ to: [{ email: to }] }],
         from: { email: EMAIL_FROM },
         subject: subject || '(no subject)',
-        content: [{ type: 'text/plain', value: body }],
+        content: [{ type: 'text/plain', value: body || ' ' }],
+        ...(attachments.length ? { attachments } : {}),
       }),
     });
     if (!res.ok) throw new Error(`SendGrid error ${res.status}`);

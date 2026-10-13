@@ -1,5 +1,8 @@
 // Shared domain logic used by routes, the workflow engine, webhooks and the scheduler.
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import { uploadPath } from './uploads.js';
+import { pushToUser } from './push.js';
 import { all, get, run, insert, update, parseJSON, now } from './db.js';
 import { emit } from './events.js';
 import { sendSms, sendEmail, sendWhatsApp, sendSocial } from './providers.js';
@@ -151,7 +154,10 @@ export function notify(userId, locationId, type, title, body, link) {
   if (prefs.notifications && prefs.notifications[type] === false) return;
   const id = insert('notifications', { user_id: userId, location_id: locationId, type, title, body, link });
   // user-level Do Not Disturb: keep the record in the inbox but don't push it live
-  if (!user.dnd) emit('notification.created', locationId, { userId, id, title, body, link, type });
+  if (!user.dnd) {
+    emit('notification.created', locationId, { userId, id, title, body, link, type });
+    pushToUser(userId, { title, body, link }).catch(() => {});
+  }
 }
 
 export function notifyLocationUsers(locationId, type, title, body, link, exceptUserId) {
@@ -176,11 +182,18 @@ export function serializeMessage(m) {
   return { ...m, meta: parseJSON(m.meta, {}), attachments: parseJSON(m.attachments, []) };
 }
 
+function attachmentLabel(msg) {
+  const files = parseJSON(msg.attachments, []);
+  if (!files.length) return '';
+  const t = files[0].type || '';
+  return t.startsWith('image/') ? '📷 Photo' : t.startsWith('audio/') ? '🎤 Voice message' : `📎 ${files[0].name || 'Attachment'}`;
+}
+
 function touchConversation(conv, msg) {
   const isComment = msg.type === 'comment';
   const fields = {
     last_message_at: msg.created_at || now(),
-    last_message_body: (msg.subject ? `${msg.subject} — ` : '') + (msg.body || (msg.type === 'call' ? 'Call' : '')),
+    last_message_body: (msg.subject ? `${msg.subject} — ` : '') + (msg.body || (msg.type === 'call' ? 'Call' : attachmentLabel(msg))),
     last_message_type: msg.type,
     last_message_direction: msg.direction,
     status: 'open',
@@ -285,7 +298,7 @@ export async function sendMessage(locationId, { contactId, conversationId, userI
   const id = insert('messages', {
     conversation_id: conv.id, location_id: locationId, contact_id: contact.id, user_id: userId || null,
     type, direction: type === 'comment' ? 'internal' : 'outbound',
-    body: text, subject: subj, status: isScheduled ? 'scheduled' : type === 'comment' ? 'sent' : 'pending',
+    body: text, subject: type === 'email' ? subj : null, status: isScheduled ? 'scheduled' : type === 'comment' ? 'sent' : 'pending',
     scheduled_at: isScheduled ? new Date(scheduledAt).toISOString() : null,
     meta: meta || {}, attachments: attachments || [],
   });
@@ -311,9 +324,15 @@ export async function deliver(messageId) {
   const contact = get('SELECT * FROM contacts WHERE id = ?', m.contact_id);
   try {
     let r;
-    if (m.type === 'sms') r = await sendSms(contact.phone, m.body);
-    else if (m.type === 'whatsapp') r = await sendWhatsApp(contact.phone, m.body);
-    else if (m.type === 'email') r = await sendEmail(contact.email, m.subject, m.body);
+    const files = parseJSON(m.attachments, []);
+    const mediaUrls = files.map((f) => (f.url.startsWith('http') ? f.url : `${PUBLIC_URL}${f.url}`));
+    if (m.type === 'sms') r = await sendSms(contact.phone, m.body, mediaUrls);
+    else if (m.type === 'whatsapp') r = await sendWhatsApp(contact.phone, m.body, mediaUrls);
+    else if (m.type === 'email') {
+      const attachments = files.map((f) => ({ f, p: uploadPath(f.url) })).filter((x) => x.p)
+        .map(({ f, p }) => ({ filename: f.name, type: f.type, content: fs.readFileSync(p).toString('base64') }));
+      r = await sendEmail(contact.email, m.subject, m.body, attachments);
+    }
     else r = await sendSocial(m.type, contact, m.body);
     const meta = { ...parseJSON(m.meta, {}), providerId: r.providerId, simulated: !!r.simulated };
     update('messages', m.id, { status: r.status, meta });

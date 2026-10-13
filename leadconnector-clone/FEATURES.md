@@ -35,6 +35,9 @@ mentions, and message direction") وكيف تم تنفيذ كل ميزة في ه
 | إسناد المحادثة، المتابعة (Follow)، تمييز كمقروء/غير مقروء، نجمة، إغلاق/إعادة فتح، حذف | قائمة المحادثة + ضغط مطوّل في القائمة |
 | احترام DND لكل قناة، و STOP يفعّل DND تلقائياً | `services.js` |
 | عدّاد مقاطع SMS | أسفل مربع الكتابة |
+| مرفقات: صور، ملفات PDF/Office، فيديو (MMS عبر Twilio، مرفقات بريد عبر SendGrid) | زر 📎 — تُخزَّن في `DATA_DIR/uploads` |
+| رسائل صوتية (Voice notes) | زر 🎤 يسجّل من الميكروفون ويرسل كمرفق صوتي |
+| مساعد AI (Conversation AI): 3 ردود مقترحة، تلخيص المحادثة مع المشاعر والخطوة التالية، إعادة صياغة/تصحيح/ترجمة عربي↔إنجليزي | زر ✨ — `server/src/routes/ai.js` (Claude) |
 | تحديث لحظي بدون إعادة تحميل | Server-Sent Events `/api/stream` |
 
 ## 3) جهات الاتصال (Contacts)
@@ -88,6 +91,8 @@ mentions, and message direction") وكيف تم تنفيذ كل ميزة في ه
 | نقطة البيع (POS) — مبلغ مخصص أو سلة منتجات | `PointOfSale.jsx` |
 | المنتجات (مرة واحدة / متكرر) | الإعدادات ← Products |
 | المعاملات + الاسترجاع (Refund) | تبويب Transactions |
+| دفع حقيقي بالبطاقة / Apple Pay / Google Pay | Stripe Checkout + Webhook (`server/src/stripe.js`) |
+| رابط دفع سريع (Text2Pay) من نقطة البيع | "Text payment link to …" — ينشئ فاتورة ويرسل الرابط SMS/Email |
 
 ## 8) السمعة والتقييمات (Reputation)
 متوسط التقييم وتوزيع النجوم، الرد على التقييمات مع ردود جاهزة، فلترة حسب المنصة/غير المرد عليها،
@@ -102,6 +107,7 @@ mentions, and message direction") وكيف تم تنفيذ كل ميزة في ه
 ## 11) الإشعارات
 داخل التطبيق + لحظية + إشعارات المتصفح، حسب النوع: رسائل واردة، إسناد، إشارة @، مواعيد، مهام، مدفوعات، تقييمات، Workflows.
 تفضيلات لكل نوع + وضع "عدم الإزعاج" للمستخدم.
+**إشعارات Push حقيقية على الهاتف** حتى والتطبيق مغلق (Web Push: Android، الحاسوب، iPhone بعد إضافته للشاشة الرئيسية)، والضغط على الإشعار يفتح المحادثة/الموعد مباشرة.
 
 ## 12) الأتمتة (Workflows)
 - **المُشغِّلات (12):** Contact Created، Tag Added، Customer Replied (حسب القناة)، Appointment Booked، Appointment Status، Opportunity Created، Stage Changed، Opportunity Status، Invoice Paid، Payment Received، Review Received (حسب الحد الأقصى للتقييم)، Task Completed.
@@ -130,5 +136,6 @@ mentions, and message direction") وكيف تم تنفيذ كل ميزة في ه
 | Tasks | `GET/POST /tasks`, `PUT/DELETE /tasks/:id` |
 | Payments | `/payments/products`, `/payments/invoices` (+ `/:id/send`, `/:id/payments`, `/:id/void`), `/payments/transactions` (+ `/:id/refund`), `POST /payments/charge`, `GET /payments/summary` |
 | Reviews | `GET/POST /reviews`, `GET /reviews/stats`, `POST /reviews/:id/reply`, `GET/POST /reviews/requests` |
+| AI / Uploads / Push | `GET /ai/status`, `POST /ai/conversations/:id/{suggest,summary}`, `POST /ai/rewrite`, `POST /uploads`, `GET /push/key`, `POST /push/{subscribe,unsubscribe,test}`, `POST /payments/payment-link` |
 | Other | `GET /dashboard`, `GET /search`, `GET /calls`, `/notifications`, `/snippets`, `/workflows` (+ `/meta`), `/manual-actions`, `GET /stream` (SSE) |
-| Public | `/public/calendars/:slug` (+ `/slots`, `/book`), `/public/invoices/:token` (+ `/pay`), `/public/reviews/:token`, `/public/chat/:locationId`, `POST /public/leads/:locationId`, `POST /public/inbound/:locationId`, `POST /public/twilio` |
+| Public | `/public/calendars/:slug` (+ `/slots`, `/book`), `/public/invoices/:token` (+ `/pay`), `/public/reviews/:token`, `/public/chat/:locationId`, `POST /public/leads/:locationId`, `POST /public/inbound/:locationId`, `POST /public/twilio`, `POST /public/invoices/:token/{checkout,confirm}`, `POST /public/stripe/webhook`, `GET /public/config` |

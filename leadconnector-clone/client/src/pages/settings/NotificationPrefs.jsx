@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { api } from '../../api.js';
+import { enablePush, pushStatus } from '../../push.js';
 import { useApp } from '../../app-context.jsx';
 import { Switch, TopBar } from '../../components/ui.jsx';
 
@@ -14,7 +16,12 @@ const TYPES = [
 ];
 
 export default function NotificationPrefs() {
-  const { user, setUser } = useApp();
+  const { user, setUser, toast } = useApp();
+  const [push, setPush] = useState('…');
+  useEffect(() => { pushStatus().then(setPush); }, []);
+  const turnOnPush = async () => {
+    try { await enablePush(); setPush('on'); toast('Push notifications enabled on this device', 'success'); } catch (e) { toast(e.message, 'error'); }
+  };
   const prefs = user.prefs.notifications || {};
   const set = async (k, v) => {
     const r = await api.put('/auth/me', { prefs: { notifications: { ...prefs, [k]: v } } });
@@ -28,13 +35,11 @@ export default function NotificationPrefs() {
           <div key={k} className="list-item"><span className="grow">{l}</span><Switch on={prefs[k] !== false} onChange={(v) => set(k, v)} /></div>
         ))}
       </div>
-      {'Notification' in window && (
-        <div className="container">
-          <button className="btn block" onClick={() => Notification.requestPermission()}>
-            Browser push: {Notification.permission === 'granted' ? 'enabled ✓' : 'tap to enable'}
-          </button>
-        </div>
-      )}
+      <div className="container">
+        <button className="btn block" onClick={turnOnPush} disabled={push === 'unsupported'}>
+          Push notifications on this device: {push === 'on' ? 'enabled ✓ (tap to send a test)' : push === 'unsupported' ? 'not supported in this browser' : push === 'denied' ? 'blocked in browser settings' : 'tap to enable'}
+        </button>
+      </div>
     </div>
   );
 }

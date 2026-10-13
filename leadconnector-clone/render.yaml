@@ -1,0 +1,41 @@
+# One-click deploy on Render: New + > Blueprint > select this repository.
+# Set rootDir to the folder that contains this file if the repo holds other projects.
+services:
+  - type: web
+    name: leadconnector-crm
+    runtime: docker
+    rootDir: leadconnector-clone
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    healthCheckPath: /api/health
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATA_DIR
+        value: /data
+      - key: SEED
+        value: "false"
+      - key: PUBLIC_URL
+        sync: false
+      - key: APP_NAME
+        value: LeadConnector
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false

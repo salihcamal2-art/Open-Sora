@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { CheckCircle2, Lock } from 'lucide-react';
 import { api } from '../../api.js';
 import { Spinner, StatusBadge } from '../../components/ui.jsx';
@@ -8,12 +8,20 @@ import { money } from '../../utils.js';
 /** Public invoice payment page (Text2Pay): /pay/:token */
 export default function PayPage() {
   const { token } = useParams();
+  const [params] = useSearchParams();
   const [inv, setInv] = useState(null);
   const [err, setErr] = useState('');
   const [card, setCard] = useState({ name: '', number: '', exp: '', cvc: '' });
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { api.get(`/public/invoices/${token}`).then(setInv).catch((e) => setErr(e.message)); }, [token]);
+  useEffect(() => {
+    const sessionId = params.get('session_id');
+    // returning from Stripe Checkout: confirm the session, then show the updated invoice
+    const load = sessionId
+      ? api.post(`/public/invoices/${token}/confirm`, { session_id: sessionId }).then((r) => api.get(`/public/invoices/${token}`).then((i) => ({ ...i, ...r.invoice })))
+      : api.get(`/public/invoices/${token}`);
+    load.then(setInv).catch((e) => setErr(e.message));
+  }, [token]); // eslint-disable-line
   if (err && !inv) return <div className="public-wrap"><div className="card pad public-card">{err}</div></div>;
   if (!inv) return <Spinner />;
   const cur = inv.location.currency;
@@ -46,7 +54,16 @@ export default function PayPage() {
           {inv.notes && <div className="faint" style={{ whiteSpace: 'pre-wrap' }}>{inv.notes}</div>}
           {inv.status === 'paid' ? (
             <div style={{ textAlign: 'center', padding: 16 }}><CheckCircle2 size={56} color="var(--success)" /><h3>Paid in full — thank you!</h3></div>
-          ) : inv.status === 'void' ? <div className="badge">This invoice has been voided</div> : (
+          ) : inv.status === 'void' ? <div className="badge">This invoice has been voided</div> : inv.stripe ? (
+            <div className="stack">
+              {err && <div style={{ color: 'var(--danger)' }}>{err}</div>}
+              <button className="btn primary block" disabled={busy} onClick={async () => {
+                setBusy(true); setErr('');
+                try { window.location.href = (await api.post(`/public/invoices/${token}/checkout`, {})).url; } catch (e2) { setErr(e2.message); setBusy(false); }
+              }}><Lock size={16} /> {busy ? 'Redirecting…' : `Pay ${money(due, cur)} securely`}</button>
+              <div className="faint" style={{ textAlign: 'center' }}>Card, Apple Pay and Google Pay via Stripe.</div>
+            </div>
+          ) : (
             <form className="stack" onSubmit={pay}>
               <div className="bold">Pay {money(due, cur)}</div>
               <input className="input" required placeholder="Name on card" value={card.name} onChange={(e) => setCard({ ...card, name: e.target.value })} />

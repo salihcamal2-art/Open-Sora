@@ -29,7 +29,7 @@ export default function Login({ register }) {
   return (
     <div className="auth-wrap">
       <form className="card auth-card stack" onSubmit={submit}>
-        <div className="row"><Logo size={44} /><div><h2>LeadConnector</h2><div className="faint">{register ? 'Create your account' : 'Sign in to your account'}</div></div></div>
+        <div className="row"><Logo size={44} /><div><h2>{localStorage.getItem('lc_app_name') || 'LeadConnector'}</h2><div className="faint">{register ? 'Create your account' : 'Sign in to your account'}</div></div></div>
         {register && (
           <>
             <input className="input" placeholder="Your full name" value={form.name} onChange={set('name')} required />

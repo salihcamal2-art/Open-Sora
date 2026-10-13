@@ -5,12 +5,13 @@ import { api } from '../api.js';
 import { useApp, useLive } from '../app-context.jsx';
 import { Empty, Spinner, TopBar } from '../components/ui.jsx';
 import { timeAgo } from '../utils.js';
+import { enablePush, pushSupported } from '../push.js';
 
 const ICONS = { inbound_message: MessageSquare, appointment: Calendar, payment: DollarSign, review: Star, assignment: UserCheck, mention: AtSign, workflow: Workflow, task: CheckSquare };
 
 export default function Notifications() {
   const nav = useNavigate();
-  const { refreshBadges } = useApp();
+  const { refreshBadges, toast } = useApp();
   const [data, setData] = useState(null);
   const load = () => api.get('/notifications').then(setData);
   useEffect(() => { load(); }, []);
@@ -28,8 +29,8 @@ export default function Notifications() {
   return (
     <div className="page">
       <TopBar back title="Notifications" right={<><button className="icon-btn" onClick={readAll} title="Mark all read"><CheckCheck size={20} /></button><button className="icon-btn" onClick={clear}><Trash2 size={20} /></button></>} />
-      {'Notification' in window && Notification.permission === 'default' && (
-        <div className="container"><button className="btn block" onClick={() => Notification.requestPermission()}><Bell size={16} /> Enable push notifications</button></div>
+      {pushSupported() && Notification.permission === 'default' && (
+        <div className="container"><button className="btn block" onClick={() => enablePush().then(() => toast('Push notifications enabled', 'success')).catch((e) => toast(e.message, 'error'))}><Bell size={16} /> Enable push notifications</button></div>
       )}
       {!data ? <Spinner /> : data.items.length === 0 ? <Empty icon={Bell} title="No notifications" /> : (
         <div className="list">

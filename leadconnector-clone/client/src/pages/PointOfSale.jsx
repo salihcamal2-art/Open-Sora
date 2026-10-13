@@ -38,6 +38,17 @@ export default function PointOfSale() {
     }
   };
 
+  const sendLink = async () => {
+    try {
+      const description = items.length ? items.map((i) => `${i.qty}x ${i.name}`).join(', ') : 'Payment';
+      const inv = await api.post('/payments/payment-link', { contact_id: contact.id, amount: total, description, channel: contact.phone ? 'sms' : 'email' });
+      toast(`Payment link sent (${inv.number})`, 'success');
+      nav(`/payments/invoices/${inv.id}`);
+    } catch (e) {
+      toast(e.message, 'error');
+    }
+  };
+
   if (done) {
     return (
       <div className="page">
@@ -81,6 +92,9 @@ export default function PointOfSale() {
           </div>
         </Field>
         <button className="btn primary block" style={{ padding: 16, fontSize: 17 }} disabled={!(total > 0)} onClick={charge}>Charge {money(total)}</button>
+        <button className="btn block" disabled={!(total > 0) || !contact} onClick={sendLink}>
+          {contact ? `Text payment link to ${contact.name}` : 'Select a customer to send a payment link'}
+        </button>
       </div>
       {pick && <ContactPicker title="Customer" onClose={() => setPick(false)} onPick={(c) => { setContact(c); setPick(false); }} />}
     </div>

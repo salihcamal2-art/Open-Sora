@@ -20,12 +20,19 @@ import paymentRoutes from './routes/payments.js';
 import reviewRoutes from './routes/reviews.js';
 import miscRoutes from './routes/misc.js';
 import publicRoutes from './routes/public.js';
+import uploadRoutes, { UPLOAD_DIR } from './uploads.js';
+import aiRoutes from './routes/ai.js';
+import { stripeWebhook } from './stripe.js';
+import pushRoutes from './push.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.set('trust proxy', true);
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+// Stripe needs the raw body to verify webhook signatures, so it is mounted before express.json
+app.post('/api/public/stripe/webhook', express.raw({ type: 'application/json' }), stripeWebhook);
+app.use(express.json({ limit: '20mb' }));
+app.use('/uploads', express.static(UPLOAD_DIR, { maxAge: '7d' }));
 
 app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
@@ -42,6 +49,9 @@ app.get('/api/stream', requireAuth, requireLocation, (req, res) => {
 });
 
 const authed = [requireAuth, requireLocation];
+app.use('/api/uploads', ...authed, uploadRoutes);
+app.use('/api/ai', ...authed, aiRoutes);
+app.use('/api/push', requireAuth, pushRoutes);
 app.use('/api/contacts', ...authed, contactRoutes);
 app.use('/api/conversations', ...authed, conversationRoutes);
 app.use('/api/opportunities', ...authed, opportunityRoutes);

@@ -5,6 +5,8 @@ import { h, HttpError, requireAdmin } from '../auth.js';
 import { fullName, serializeContact, serializeAppt } from '../services.js';
 import { TRIGGERS, ACTIONS } from '../workflows.js';
 import { providersStatus } from '../providers.js';
+import { aiEnabled } from './ai.js';
+import { stripeEnabled } from '../stripe.js';
 
 const r = Router();
 
@@ -80,7 +82,7 @@ r.get('/dashboard', h((req, res) => {
     pipeline_stages: pipelineStages,
     leads_by_day: leadsByDay,
     sources,
-    providers: providersStatus(),
+    providers: { ...providersStatus(), ai: aiEnabled(), stripe: stripeEnabled() },
   });
 }));
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
-  Phone, Star, MoreVertical, Send, Clock, FileText, AtSign, Trash2, User, UserCheck, Archive, MailOpen, Eye, EyeOff, AlertCircle, PhoneIncoming, PhoneOutgoing,
+  Phone, Star, MoreVertical, Send, Clock, FileText, AtSign, Trash2, Paperclip, Mic, Square, X, Sparkles, User, UserCheck, Archive, MailOpen, Eye, EyeOff, AlertCircle, PhoneIncoming, PhoneOutgoing,
 } from 'lucide-react';
 import { api } from '../api.js';
 import { useApp, useLive } from '../app-context.jsx';
@@ -25,6 +25,11 @@ export default function Thread() {
   const [sheet, setSheet] = useState(null); // 'menu' | 'snippets' | 'schedule' | 'mention' | 'channel' | 'assign'
   const [snippets, setSnippets] = useState([]);
   const [scheduleAt, setScheduleAt] = useState(toLocalInput(new Date(Date.now() + 3600e3)));
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(null); // { recorder, start }
+  const [recSecs, setRecSecs] = useState(0);
+  const fileRef = useRef(null);
   const endRef = useRef(null);
 
   const load = async () => {
@@ -49,16 +54,69 @@ export default function Thread() {
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }); }, [msgs?.length]);
   useEffect(() => { api.get('/snippets').then(setSnippets).catch(() => {}); }, []);
 
+  const upload = async (file) => {
+    const data = await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
+    return api.post('/uploads', { name: file.name || 'voice-note.webm', type: file.type || 'application/octet-stream', data });
+  };
+  const addFiles = async (list) => {
+    setUploading(true);
+    try {
+      for (const f of list) {
+        const up = await upload(f);
+        setFiles((x) => [...x, up]);
+      }
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks = [];
+      recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const type = (recorder.mimeType || 'audio/webm').split(';')[0];
+        const blob = new Blob(chunks, { type });
+        await addFiles([new File([blob], `voice-note.${type.split('/')[1] || 'webm'}`, { type })]);
+      };
+      recorder.start();
+      const start = Date.now();
+      const timer = setInterval(() => setRecSecs(Math.floor((Date.now() - start) / 1000)), 500);
+      setRecSecs(0);
+      setRecording({ recorder, timer });
+    } catch (e) {
+      toast(`Microphone unavailable: ${e.message}`, 'error');
+    }
+  };
+  const stopRecording = (discard) => {
+    if (!recording) return;
+    clearInterval(recording.timer);
+    if (discard) recording.recorder.onstop = () => recording.recorder.stream?.getTracks().forEach((t) => t.stop());
+    recording.recorder.stop();
+    setRecording(null);
+  };
+
+  const canSend = body.trim() || (files.length && channel !== 'comment');
   const send = async (scheduled) => {
-    if (!body.trim()) return;
+    if (!canSend) return;
     setSending(true);
     try {
       await api.post(`/conversations/${id}/messages`, {
-        type: channel, body, subject: channel === 'email' ? subject : undefined,
+        type: channel, body, subject: channel === 'email' ? subject : undefined, attachments: files,
         mentions: channel === 'comment' ? mentions : undefined,
         scheduledAt: scheduled ? fromLocalInput(scheduleAt) : undefined,
       });
       setBody('');
+      setFiles([]);
       setSubject('');
       setMentions([]);
       setSheet(null);
@@ -132,13 +190,35 @@ export default function Thread() {
           {channel === 'comment' && mentions.length > 0 && <span className="faint">@ {mentions.map((uid) => team.find((u) => u.id === uid)?.name).join(', ')}</span>}
           {dnd && <span className="badge red"><AlertCircle size={12} /> DND on {CHANNEL_LABELS[channel]}</span>}
           <span className="grow" />
+          <button className="icon-btn" onClick={() => setSheet('ai')} aria-label="AI assist"><Sparkles size={19} color="#7A5AF8" /></button>
           <button className="icon-btn" onClick={() => setSheet('snippets')} aria-label="Snippets"><FileText size={19} /></button>
           {channel === 'comment'
             ? <button className="icon-btn" onClick={() => setSheet('mention')} aria-label="Mention"><AtSign size={19} /></button>
-            : <button className="icon-btn" onClick={() => setSheet('schedule')} aria-label="Schedule" disabled={!body.trim()}><Clock size={19} /></button>}
+            : <button className="icon-btn" onClick={() => setSheet('schedule')} aria-label="Schedule" disabled={!canSend}><Clock size={19} /></button>}
         </div>
         {channel === 'email' && <input className="input" style={{ marginBottom: 6 }} placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} />}
+        {(files.length > 0 || uploading) && (
+          <div className="row wrap" style={{ gap: 6, marginBottom: 6 }}>
+            {files.map((f, i) => (
+              <span key={f.url} className="tag-chip" style={{ padding: 4 }}>
+                {f.type.startsWith('image/') ? <img src={f.url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6 }} /> : f.type.startsWith('audio/') ? '🎤 Voice note' : `📎 ${f.name}`}
+                <button onClick={() => setFiles(files.filter((_, j) => j !== i))} aria-label="Remove attachment"><X size={14} /></button>
+              </span>
+            ))}
+            {uploading && <span className="faint">Uploading…</span>}
+          </div>
+        )}
+        <input ref={fileRef} type="file" multiple hidden accept="image/*,audio/*,video/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt" onChange={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} />
+        {recording ? (
+          <div className="row" style={{ padding: '6px 4px' }}>
+            <span className="ch-dot" style={{ background: 'var(--danger)', width: 10, height: 10 }} />
+            <span className="grow bold">Recording… {Math.floor(recSecs / 60)}:{String(recSecs % 60).padStart(2, '0')}</span>
+            <button className="btn sm" onClick={() => stopRecording(true)}>Discard</button>
+            <button className="icon-btn" style={{ background: 'var(--danger)', color: '#fff', borderRadius: '50%' }} onClick={() => stopRecording(false)} aria-label="Stop recording"><Square size={16} fill="#fff" /></button>
+          </div>
+        ) : (
         <div className="row" style={{ alignItems: 'flex-end' }}>
+          {channel !== 'comment' && <button className="icon-btn" onClick={() => fileRef.current.click()} aria-label="Attach file"><Paperclip size={19} /></button>}
           <textarea
             rows={1}
             placeholder={channel === 'comment' ? 'Internal comment (only your team sees this)…' : `Type a ${CHANNEL_LABELS[channel]} message…`}
@@ -146,8 +226,11 @@ export default function Thread() {
             onChange={(e) => setBody(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) send(); }}
           />
-          <button className="icon-btn" style={{ background: 'var(--brand)', color: '#fff', borderRadius: '50%' }} disabled={sending || !body.trim()} onClick={() => send()} aria-label="Send"><Send size={18} /></button>
+          {!body.trim() && !files.length && channel !== 'comment' && 'MediaRecorder' in window
+            ? <button className="icon-btn" style={{ background: 'var(--brand)', color: '#fff', borderRadius: '50%' }} onClick={startRecording} aria-label="Record voice note"><Mic size={18} /></button>
+            : <button className="icon-btn" style={{ background: 'var(--brand)', color: '#fff', borderRadius: '50%' }} disabled={sending || uploading || !canSend} onClick={() => send()} aria-label="Send"><Send size={18} /></button>}
         </div>
+        )}
         {channel === 'sms' && body && <div className="faint" style={{ textAlign: 'right', fontSize: 11 }}>{body.length} chars · {Math.ceil(body.length / 160)} segment(s)</div>}
       </div>
 
@@ -162,6 +245,7 @@ export default function Thread() {
           ))}
         </Sheet>
       )}
+      {sheet === 'ai' && <AiSheet convId={id} channel={channel} draft={body} onClose={() => setSheet(null)} onUse={(t) => { setBody(t); setSheet(null); }} />}
       {sheet === 'snippets' && (
         <Sheet title="Snippets" onClose={() => setSheet(null)}>
           {snippets.length === 0 && <div className="faint">No snippets yet. Add them in Settings → Snippets.</div>}
@@ -237,7 +321,7 @@ function Message({ m, onDelete }) {
       <div className="bubble" onContextMenu={(e) => { if (m.status === 'scheduled' || m.type === 'comment') { e.preventDefault(); onDelete(); } }}>
         {m.subject && <div className="subject">{m.subject}</div>}
         {m.body}
-        {m.attachments?.map((a, i) => <div key={i}><a href={a.url} target="_blank" rel="noreferrer">📎 Attachment</a></div>)}
+        {m.attachments?.map((a, i) => <Attachment key={i} a={a} />)}
       </div>
       <div className="meta">
         <ChannelIcon type={m.type} size={11} />
@@ -248,5 +332,74 @@ function Message({ m, onDelete }) {
         {m.type === 'comment' && <button className="btn ghost sm" style={{ padding: 0 }} onClick={onDelete}><Trash2 size={11} /></button>}
       </div>
     </div>
+  );
+}
+
+function Attachment({ a }) {
+  const type = a.type || '';
+  if (type.startsWith('image/')) return <a href={a.url} target="_blank" rel="noreferrer"><img src={a.url} alt={a.name || 'image'} style={{ maxWidth: 220, maxHeight: 260, borderRadius: 12, display: 'block', marginTop: 4 }} /></a>;
+  if (type.startsWith('audio/')) return <audio controls src={a.url} style={{ maxWidth: 240, marginTop: 4 }} />;
+  if (type.startsWith('video/')) return <video controls src={a.url} style={{ maxWidth: 240, borderRadius: 12, marginTop: 4 }} />;
+  return <div style={{ marginTop: 4 }}><a href={a.url} target="_blank" rel="noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>📎 {a.name || 'Attachment'}</a></div>;
+}
+
+const REWRITES = [['improve', 'Improve'], ['professional', 'Professional'], ['friendly', 'Friendly'], ['shorter', 'Shorter'], ['grammar', 'Fix grammar'], ['arabic', 'To Arabic'], ['english', 'To English']];
+
+/** Conversation AI: suggested replies, summary, and rewriting the current draft. */
+function AiSheet({ convId, channel, draft, onClose, onUse }) {
+  const { toast } = useApp();
+  const [status, setStatus] = useState(null);
+  const [busy, setBusy] = useState('');
+  const [replies, setReplies] = useState(null);
+  const [summary, setSummary] = useState('');
+  const [rewritten, setRewritten] = useState('');
+  const [hint, setHint] = useState('');
+  useEffect(() => { api.get('/ai/status').then(setStatus).catch(() => setStatus({ enabled: false })); }, []);
+
+  const run = async (key, fn) => {
+    setBusy(key);
+    try { await fn(); } catch (e) { toast(e.message, 'error'); } finally { setBusy(''); }
+  };
+  const suggest = () => run('suggest', async () => setReplies((await api.post(`/ai/conversations/${convId}/suggest`, { channel, instructions: hint })).replies));
+  const summarize = () => run('summary', async () => setSummary((await api.post(`/ai/conversations/${convId}/summary`, {})).summary));
+  const rewrite = (mode) => run(mode, async () => setRewritten((await api.post('/ai/rewrite', { text: draft, mode })).text));
+
+  return (
+    <Sheet title="✨ AI assistant" onClose={onClose} wide>
+      {!status ? <Spinner /> : !status.enabled ? (
+        <div className="faint">AI is not enabled yet. Add <code>ANTHROPIC_API_KEY</code> to the server's <code>.env</code> file and restart to get reply suggestions, summaries and rewriting.</div>
+      ) : (
+        <div className="stack">
+          <div className="row">
+            <input className="input" placeholder="Optional: guide the reply (e.g. offer Friday 4pm)" value={hint} onChange={(e) => setHint(e.target.value)} />
+            <button className="btn primary" disabled={!!busy} onClick={suggest}>{busy === 'suggest' ? 'Thinking…' : 'Suggest replies'}</button>
+          </div>
+          {replies?.map((r, i) => (
+            <button key={i} className="card pad" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => onUse(r)}>
+              <div style={{ whiteSpace: 'pre-wrap' }}>{r}</div>
+              <div className="small" style={{ color: 'var(--brand)', marginTop: 4 }}>Use this reply →</div>
+            </button>
+          ))}
+          <div className="hr" />
+          <button className="btn" disabled={!!busy} onClick={summarize}>{busy === 'summary' ? 'Summarizing…' : 'Summarize conversation'}</button>
+          {summary && <div className="card pad small" style={{ whiteSpace: 'pre-wrap' }}>{summary}</div>}
+          <div className="hr" />
+          <div className="small bold">Rewrite my draft</div>
+          {!draft.trim() ? <div className="faint">Type a message first, then pick a style.</div> : (
+            <>
+              <div className="row wrap" style={{ gap: 6 }}>
+                {REWRITES.map(([k, l]) => <button key={k} className="tab" disabled={!!busy} onClick={() => rewrite(k)}>{busy === k ? '…' : l}</button>)}
+              </div>
+              {rewritten && (
+                <button className="card pad" style={{ textAlign: 'left', cursor: 'pointer' }} onClick={() => onUse(rewritten)}>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{rewritten}</div>
+                  <div className="small" style={{ color: 'var(--brand)', marginTop: 4 }}>Replace my draft →</div>
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </Sheet>
   );
 }

@@ -37,13 +37,13 @@ export default function Integrations() {
       <div className="container stack">
         <div className="card pad">
           <div className="bold" style={{ marginBottom: 6 }}>Messaging providers</div>
-          {providers && [['sms', 'SMS (Twilio)'], ['whatsapp', 'WhatsApp (Twilio)'], ['email', 'Email (SendGrid)']].map(([k, l]) => (
+          {providers && [['sms', 'SMS (Twilio)'], ['whatsapp', 'WhatsApp (Twilio)'], ['email', 'Email (SendGrid)'], ['stripe', 'Card payments (Stripe)'], ['ai', 'Conversation AI (Claude)']].map(([k, l]) => (
             <div key={k} className="row between" style={{ padding: '6px 0' }}>
               <span>{l}</span>
-              {providers[k] ? <span className="badge green"><CheckCircle2 size={12} /> Connected</span> : <span className="badge orange"><XCircle size={12} /> Simulated</span>}
+              {providers[k] ? <span className="badge green"><CheckCircle2 size={12} /> Connected</span> : <span className="badge orange"><XCircle size={12} /> {k === 'ai' ? 'Off' : 'Simulated'}</span>}
             </div>
           ))}
-          <div className="faint" style={{ marginTop: 6 }}>Set TWILIO_* / SENDGRID_* environment variables on the server to send real messages.</div>
+          <div className="faint" style={{ marginTop: 6 }}>Set TWILIO_* / SENDGRID_* / STRIPE_* / ANTHROPIC_API_KEY in the server's .env to switch each one from simulated to live.</div>
         </div>
         <div className="card pad">
           <div className="row between"><span className="bold">API key</span><button className="btn sm" onClick={regen}><RefreshCw size={14} /> {key ? 'Regenerate' : 'Generate'}</button></div>
@@ -52,6 +52,7 @@ export default function Integrations() {
         <div className="card pad">
           <div className="bold">Webhooks & endpoints</div>
           <CopyRow label="Twilio inbound SMS/WhatsApp webhook (POST)" value={`${origin}/api/public/twilio`} />
+          <CopyRow label="Stripe webhook (event: checkout.session.completed)" value={`${origin}/api/public/stripe/webhook`} />
           <CopyRow label="Lead capture (website forms, Zapier) — POST JSON" value={`${origin}/api/public/leads/${location.id}?key=${key || 'YOUR_API_KEY'}`} />
           <CopyRow label="Inbound message from any channel — POST JSON" value={`${origin}/api/public/inbound/${location.id}?key=${key || 'YOUR_API_KEY'}`} />
           <CopyRow label="Live chat widget page" value={`${origin}/chat/${location.id}`} />

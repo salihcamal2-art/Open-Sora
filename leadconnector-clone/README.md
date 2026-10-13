@@ -53,6 +53,16 @@ npm run seed            # يمسح قاعدة البيانات ويعيد تعب
 
 ---
 
+## النشر على الإنترنت بضغطة واحدة (Render)
+
+1. ارفع المستودع على GitHub (موجود مسبقاً).
+2. ادخل https://render.com ← **New +** ← **Blueprint** ← اختر المستودع. سيقرأ ملف `render.yaml` تلقائياً
+   (خادم Docker + قرص دائم لقاعدة البيانات والملفات + `JWT_SECRET` عشوائي).
+3. ضع `PUBLIC_URL` = رابط موقعك على Render (مثل `https://leadconnector-crm.onrender.com`) واضغط Deploy.
+4. افتح الرابط ← **Create an account** ← أصبح التطبيق جاهزاً لك. افتحه من هاتفك ← "إضافة إلى الشاشة الرئيسية".
+
+يعمل بنفس الطريقة على Railway / Fly.io / أي VPS عبر `Dockerfile`.
+
 ## تحويله إلى تطبيق موبايل (Android / iOS)
 
 الواجهة مبنية كـ **PWA** (قابلة للتثبيت من المتصفح على الهاتف مباشرة: "Add to Home screen").
@@ -89,9 +99,18 @@ npx cap add ios && npx cap open ios                            # Xcode (على M
 - **نماذج الموقع / Zapier**: `POST /api/public/leads/:locationId?key=API_KEY`
 - **Live Chat**: صفحة `/chat/:locationId` جاهزة للتضمين في موقعك عبر iframe (الكود موجود في Settings → Integrations)
 
-بوابة الدفع: صفحة الدفع `/pay/:token` جاهزة، والدفع حالياً محاكى. اربط Stripe في
-`server/src/routes/public.js` داخل `POST /invoices/:token/pay` (التعليق يوضح المكان).
-بطاقة `4000 0000 0000 0002` تحاكي رفض الدفع للاختبار.
+### ميزات إضافية تتفعّل بمفتاح
+
+| الميزة | المتغيرات |
+|---|---|
+| الدفع بالبطاقة (Stripe Checkout) | `STRIPE_SECRET_KEY` + `STRIPE_WEBHOOK_SECRET` (Webhook: `/api/public/stripe/webhook`، الحدث `checkout.session.completed`) |
+| مساعد الذكاء الاصطناعي (اقتراح ردود، تلخيص، إعادة صياغة وترجمة) | `ANTHROPIC_API_KEY` (والنموذج عبر `AI_MODEL`، الافتراضي `claude-opus-5-5`) |
+| إشعارات الهاتف (Web Push) | تعمل تلقائياً — مفاتيح VAPID تُولَّد وتُحفظ أول مرة. فعّلها من Settings ← Notifications |
+| اسم التطبيق (White-label) | `APP_NAME` |
+
+بدون مفتاح Stripe تبقى صفحة الدفع `/pay/:token` تعمل بوضع المحاكاة
+(بطاقة `4000 0000 0000 0002` تحاكي رفض الدفع للاختبار). ومع المفتاح يُحوَّل العميل إلى صفحة Stripe الآمنة
+(بطاقة، Apple Pay، Google Pay) وتُسجَّل الدفعة تلقائياً.
 
 ---
 

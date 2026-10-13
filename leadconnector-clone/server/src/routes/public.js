@@ -11,8 +11,13 @@ import {
   token, serializeMessage, normalizePhone, updateContact,
 } from '../services.js';
 import { emit } from '../events.js';
+import { stripeEnabled, createInvoiceCheckout, confirmCheckout } from '../stripe.js';
+import { PUBLIC_URL } from '../services.js';
 
 const r = Router();
+
+// ---------- app config (branding) ----------
+r.get('/config', (req, res) => res.json({ appName: process.env.APP_NAME || 'LeadConnector' }));
 
 // ---------- booking ----------
 function loadCal(slug) {
@@ -49,13 +54,28 @@ r.get('/invoices/:token', h((req, res) => {
   if (!inv || inv.status === 'draft') throw new HttpError(404, 'Invoice not found');
   const loc = get('SELECT name, email, phone, address, currency FROM locations WHERE id = ?', inv.location_id);
   const s = serializeInvoice(inv);
-  res.json({ ...s, location: loc, public_token: undefined });
+  res.json({ ...s, location: loc, public_token: undefined, stripe: stripeEnabled() });
 }));
+// Real card payments: redirect to Stripe Checkout, then confirm on return (and via webhook)
+r.post('/invoices/:token/checkout', h(async (req, res) => {
+  const inv = get('SELECT * FROM invoices WHERE public_token = ?', req.params.token);
+  if (!inv || ['draft', 'void', 'paid'].includes(inv.status)) throw new HttpError(422, 'This invoice cannot be paid');
+  if (!stripeEnabled()) throw new HttpError(503, 'Online card payments are not configured');
+  res.json({ url: await createInvoiceCheckout(inv, PUBLIC_URL) });
+}));
+r.post('/invoices/:token/confirm', h(async (req, res) => {
+  const inv = get('SELECT * FROM invoices WHERE public_token = ?', req.params.token);
+  if (!inv) throw new HttpError(404, 'Invoice not found');
+  const paid = req.body.session_id && stripeEnabled() ? await confirmCheckout(req.body.session_id) : false;
+  res.json({ paid, invoice: serializeInvoice(get('SELECT * FROM invoices WHERE id = ?', inv.id)) });
+}));
+
 r.post('/invoices/:token/pay', h((req, res) => {
   const inv = get('SELECT * FROM invoices WHERE public_token = ?', req.params.token);
   if (!inv || inv.status === 'draft') throw new HttpError(404, 'Invoice not found');
   if (inv.status === 'paid') throw new HttpError(422, 'Invoice already paid');
   if (inv.status === 'void') throw new HttpError(422, 'Invoice is void');
+  if (stripeEnabled()) throw new HttpError(400, 'Use secure checkout to pay this invoice');
   const { card_number = '' } = req.body;
   // Payment gateway hook: plug Stripe / PayPal / Authorize.net here. Without a gateway the
   // payment is simulated; card "4000000000000002" simulates a decline for testing.

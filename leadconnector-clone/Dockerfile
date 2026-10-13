@@ -15,3 +15,4 @@ ENV PORT=4000 DATA_DIR=/data
 VOLUME /data
 EXPOSE 4000
 CMD ["node", "--no-warnings", "server/src/index.js"]
+HEALTHCHECK CMD wget -qO- http://localhost:${PORT:-4000}/api/health || exit 1

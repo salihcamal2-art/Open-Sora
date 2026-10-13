@@ -143,6 +143,26 @@ r.post('/charge', h((req, res) => {
   res.json(t);
 }));
 
+// Text2Pay: create a one-line invoice for an amount and text/email the payment link
+r.post('/payment-link', h(async (req, res) => {
+  const { contact_id, amount, description = 'Payment', channel = 'sms' } = req.body;
+  if (!contact_id) throw new HttpError(400, 'Choose a customer to send the link to');
+  if (!(Number(amount) > 0)) throw new HttpError(400, 'Amount must be greater than 0');
+  const items = [{ name: description, price: Number(amount), qty: 1 }];
+  const calc = recalcInvoice({ items });
+  const id = insert('invoices', {
+    location_id: req.locationId, contact_id, number: nextNumber(req.locationId), title: description, status: 'sent',
+    issue_date: new Date().toISOString().slice(0, 10), items: calc.items, subtotal: calc.subtotal, total: calc.total, public_token: token(12),
+  });
+  const inv = serializeInvoice(get('SELECT * FROM invoices WHERE id = ?', id));
+  const loc = get('SELECT * FROM locations WHERE id = ?', req.locationId);
+  await sendMessage(req.locationId, {
+    contactId: contact_id, userId: req.user.id, type: channel, subject: `Payment request from ${loc.name}`,
+    body: `Hi ${inv.contact?.first_name || ''}, ${loc.name} sent you a payment request for ${loc.currency} ${inv.total.toFixed(2)} (${description}). Pay securely here: ${inv.pay_url}`,
+  });
+  res.json(inv);
+}));
+
 r.post('/transactions/:id/refund', h((req, res) => {
   const t = get('SELECT * FROM transactions WHERE id = ? AND location_id = ?', req.params.id, req.locationId);
   if (!t) throw new HttpError(404, 'Transaction not found');
